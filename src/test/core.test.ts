@@ -163,12 +163,12 @@ test('mock adapter must be explicit and is labelled; real adapter refuses to fak
   assert.equal(ad.isMock, true); assert.match(ad.name, /MOCK/); assert.deepEqual(res.plannedChanges, ['a.txt', 'deep/new.ts']);
   assert.deepEqual(events, ['agent.session.started', 'agent.file.modified', 'agent.file.modified']);
   await mgr.refresh(repo, c); assert.equal(c.changes.length, 2);
-  await assert.rejects(() => new TrueForgeAdapter().run({ workspaceRoot: repo, prompt: 'p', onEvent: () => {} }), IntegrationNotVerifiedError);
+  await assert.rejects(() => new TrueForgeAdapter({ baseUrl: 'http://localhost:1', model: '' }).run({ workspaceRoot: repo, prompt: 'p', onEvent: () => {} }), IntegrationNotVerifiedError);
   await assert.rejects(() => new MockAgentAdapter([{ path: '../escape.txt', content: 'x' }], { iUnderstandThisIsAMock: true })
     .run({ workspaceRoot: repo, prompt: 'p', onEvent: () => {} }));
 });
 
 test('unified diff basics', () => {
   const d = unifiedDiff('f', 'a\nb\n', 'a\nc\n');
-  assert.equal(d.added, 1); assert.equal(d.removed, 1); assert.ok(d.text.includes('\n-b') && d.text.includes('\n+c'));
+  assert.equal(d.added, 1); assert.equal(d.removed, 1); assert.equal(unifiedDiff('f', '', 'x\n').added, 1); assert.ok(d.text.includes('\n-b') && d.text.includes('\n+c'));
 });

@@ -8,7 +8,7 @@
 |---|---|
 | Core engine: checkpoints, Change Capsules, diffs, review, safe recovery, test runner, flight recorder, path security | Implemented. **16/16 automated tests pass** (`npm run test:core`), using real temporary Git repos |
 | VS Code sidebar + extension (`src/extension.ts`, `src/ui`, `media/`) | Written, **NOT yet compiled or run** (needs `npm install` for `@types/vscode`) |
-| TrueFoundry / TrueForge agent integration | **Not implemented.** `TrueForgeAdapter` refuses to run rather than fake success. A clearly labelled MOCK adapter exists for demos |
+| TrueForge agent adapter (`src/core/trueforge`) | Written from the official SDK quickstart; **untested against a live server**. Needs a running TrueForge server + model key. Unknown whether the agent edits your local folder, so changes are found by scanning |
 | Hunk-level review, SecretStorage credentials, VS Code integration tests | Not implemented yet |
 
 ## How recovery works

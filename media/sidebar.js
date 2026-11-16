@@ -9,6 +9,7 @@
     const b = e.target.closest('button[data-act]'); if (!b) return;
     const act = b.dataset.act;
     if (act === 'create') send('createCapsule', { title: $('title').value, prompt: $('prompt').value });
+    else if (act === 'runAgent') send('runAgent');
     else if (act === 'demo') send('runMockAgent');
     else send(act, { path: b.dataset.path, id: b.dataset.id });
   });

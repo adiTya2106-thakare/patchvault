@@ -5,16 +5,50 @@ import { resolveInside } from '../../security/pathValidator';
 
 export class IntegrationNotVerifiedError extends Error {}
 
-/** REAL integration placeholder.
- *  TrueForge (open source, @truefoundry/trueforge-sdk) was found in public docs, but the exact SDK call
- *  signatures and the way file edits are surfaced have NOT been verified against the installed package.
- *  Until they are, this adapter refuses to run instead of faking success. */
+export interface TrueForgeConfig { baseUrl: string; model: string; instructions?: string }
+
+/** Minimal shape of the documented SDK calls (https://trueforge.dev/api/quickstart):
+ *  new TrueForge({baseUrl}), client.sessions.create({agent:{spec}}), client.sessions.createTurnStream(id,{input}).
+ *  The SDK is loaded at runtime so a changed SDK shape fails with a clear message, not a build break. */
+interface TfClient {
+  sessions: {
+    create(a: unknown): Promise<{ data: { id: string } }>;
+    createTurnStream(id: string, a: unknown): Promise<AsyncIterable<unknown>>;
+  };
+}
+
+/** REAL integration. TrueForge owns the agent loop; PATCHVAULT only starts a turn and records events.
+ *  UNTESTED against a live server: no TrueForge server/model key was available during development.
+ *  Where the agent writes files (local folder vs. TrueForge sandbox) is unverified, so changes are
+ *  discovered by scanning the workspace, never assumed from events. */
 export class TrueForgeAdapter implements AgentAdapter {
   readonly name = 'TrueForge';
   readonly isMock = false;
-  async run(_ctx: AgentRunContext): Promise<AgentRunResult> {
-    throw new IntegrationNotVerifiedError(
-      'TrueForge SDK integration is not implemented yet: SDK methods were not verified against the installed package.');
+  constructor(private readonly cfg: TrueForgeConfig) {}
+
+  async run(ctx: AgentRunContext): Promise<AgentRunResult> {
+    if (!this.cfg.model.trim()) { throw new IntegrationNotVerifiedError('Set the "patchvault.trueforgeModel" setting first (a model configured in your TrueForge Settings).'); }
+    let sdk: { TrueForge?: new (o: unknown) => TfClient };
+    try { const name = '@truefoundry/trueforge-sdk'; sdk = await import(name); }
+    catch { throw new IntegrationNotVerifiedError('Could not load @truefoundry/trueforge-sdk. Run "npm install" in the extension folder.'); }
+    if (typeof sdk.TrueForge !== 'function') { throw new IntegrationNotVerifiedError('Installed SDK has no TrueForge export; its API differs from the documented quickstart.'); }
+    const client = new sdk.TrueForge({ baseUrl: this.cfg.baseUrl, timeoutInSeconds: 600 });
+    const { data: session } = await client.sessions.create({
+      agent: { spec: { model: { name: this.cfg.model }, instructions: this.cfg.instructions ?? 'You are a careful coding assistant working in the user\'s project.' } },
+    });
+    ctx.onEvent('agent.session.started', { adapter: this.name, sessionId: session.id, mock: false });
+    const stream = await client.sessions.createTurnStream(session.id, { input: [{ type: 'user.message', content: ctx.prompt }] });
+    let status = 'unknown'; let last = '';
+    for await (const item of stream) {
+      // Docs disagree on whether items are wrapped as {data: event}; accept both.
+      const w = item as { data?: { type?: string; state?: { status?: string } }; type?: string; state?: { status?: string } };
+      const ev = w.data && typeof w.data.type === 'string' ? w.data : w;
+      if (!ev || typeof ev.type !== 'string') { continue; }
+      if (ev.type.endsWith('.delta')) { continue; }          // deltas are transport, not state
+      if (ev.type !== last) { ctx.onEvent('agent.event', { type: ev.type }); last = ev.type; }
+      if (ev.type === 'turn.done') { status = ev.state?.status ?? 'done'; }
+    }
+    return { sessionId: session.id, plannedChanges: null, summary: `TrueForge turn finished: ${status}` };
   }
 }
 

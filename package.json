@@ -61,8 +61,21 @@
           "type": "string",
           "default": "npm test",
           "description": "Command run by 'Run tests'. Executed in the workspace root."
+        },
+        "patchvault.trueforgeBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:8790",
+          "description": "URL of your TrueForge server."
+        },
+        "patchvault.trueforgeModel": {
+          "type": "string",
+          "default": "",
+          "description": "Model name configured in TrueForge Settings, e.g. anthropic/claude-sonnet-4-6."
         }
       }
     }
+  },
+  "dependencies": {
+    "@truefoundry/trueforge-sdk": "^0.185.0"
   }
 }

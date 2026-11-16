@@ -4,8 +4,9 @@ export interface DiffResult { added: number; removed: number; text: string }
 export function isBinary(b: Buffer): boolean { return b.subarray(0, 8000).includes(0); }
 
 export function unifiedDiff(name: string, a: string, b: string): DiffResult {
-  const A = a === '' ? [] : a.split('\n');
-  const B = b === '' ? [] : b.split('\n');
+  const lines0 = (t: string): string[] => { if (t === '') { return []; } const x = t.split('\n'); if (x[x.length - 1] === '') { x.pop(); } return x; };
+  const A = lines0(a);
+  const B = lines0(b);
   const n = A.length, m = B.length;
   const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i--) {

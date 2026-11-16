@@ -12,7 +12,7 @@ import { MockAgentAdapter, TrueForgeAdapter } from '../core/trueforge/trueforgeA
 import { resolveInside } from '../security/pathValidator';
 
 type Msg = { type: string; title?: string; prompt?: string; path?: string; id?: string };
-const KNOWN = new Set(['ready', 'createCapsule', 'runMockAgent', 'scan', 'approve', 'reject', 'openDiff', 'runTests', 'recoverAll', 'select']);
+const KNOWN = new Set(['ready', 'createCapsule', 'runMockAgent', 'runAgent', 'scan', 'approve', 'reject', 'openDiff', 'runTests', 'recoverAll', 'select']);
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
@@ -35,7 +35,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <h2>Agent integration</h2><div id="tf"></div>
 <h2>New task</h2>
 <input id="title" placeholder="Task title" aria-label="Task title"><textarea id="prompt" rows="3" placeholder="What should the agent do?" aria-label="Task prompt"></textarea>
-<button data-act="create">Create capsule (checkpoint)</button><button data-act="demo" class="secondary">Run MOCK agent (demo)</button>
+<button data-act="create">Create capsule (checkpoint)</button><button data-act="runAgent">Run TrueForge agent</button><button data-act="demo" class="secondary">Run MOCK agent (demo)</button>
 <div id="status" role="status" class="muted"></div>
 <h2>Current capsule</h2><div id="cur"></div>
 <h2>History</h2><ul id="hist" style="list-style:none;padding:0"></ul>
@@ -63,9 +63,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         if (!m.title?.trim() || !m.prompt?.trim()) { throw new Error('Title and prompt are required.'); }
         this.post({ type: 'busy', text: 'Capturing checkpoint…' });
         this.current = await this.mgr.create(root, m.title.trim().slice(0, 120), m.prompt.slice(0, 20000));
-        try { await new TrueForgeAdapter().run({ workspaceRoot: root, prompt: m.prompt, onEvent: () => undefined }); }
-        catch (e) { this.push(`Checkpoint ready. ${(e as Error).message} Make the edits with your own agent/editor, then press "Scan changes".`); return; }
-        break;
+        this.push('Checkpoint ready. Run the TrueForge agent, or edit with your own tool and press "Scan changes".'); return;
+      }
+      case 'runAgent': {
+        if (!c) { throw new Error('Create a capsule first.'); }
+        const cfg = vscode.workspace.getConfiguration('patchvault');
+        const ad = new TrueForgeAdapter({ baseUrl: cfg.get<string>('trueforgeBaseUrl', 'http://localhost:8790'), model: cfg.get<string>('trueforgeModel', '') });
+        c.agentSession = { adapter: ad.name, sessionId: null, mock: false }; c.status = 'running';
+        this.post({ type: 'busy', text: 'TrueForge agent running…' });
+        try {
+          const res = await ad.run({ workspaceRoot: root, prompt: c.prompt, onEvent: (t, meta) => record(c, t, meta) });
+          c.agentSession.sessionId = res.sessionId; record(c, 'agent.finished', { summary: res.summary });
+        } catch (e) { c.status = 'failed'; record(c, 'agent.failed', { error: (e as Error).message.slice(0, 200) }); this.mgr.save(c); throw e; }
+        c.status = 'review'; await this.mgr.refresh(root, c); this.push('TrueForge turn finished. Changes below were found by scanning the workspace.'); return;
       }
       case 'runMockAgent': {
         if (!c) { throw new Error('Create a capsule first.'); }
