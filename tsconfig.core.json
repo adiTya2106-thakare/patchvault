@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/core/**/*.ts",
+    "src/security/**/*.ts",
+    "src/test/**/*.ts"
+  ],
+  "exclude": [],
+  "compilerOptions": {
+    "typeRoots": [
+      "/opt/npm-tools/node_modules/@types"
+    ]
+  }
+}

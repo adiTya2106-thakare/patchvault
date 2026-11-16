@@ -1,0 +1,14 @@
+body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:8px;font-size:var(--vscode-font-size)}
+h1{font-size:1.1em;margin:0 0 4px;letter-spacing:.08em}
+h2{font-size:.85em;text-transform:uppercase;opacity:.7;margin:14px 0 6px}
+.badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:.85em;border:1px solid var(--vscode-panel-border)}
+.ok{background:var(--vscode-testing-iconPassed);color:#fff}.warn{background:var(--vscode-editorWarning-foreground);color:#000}
+.bad{background:var(--vscode-editorError-foreground);color:#fff}.mock{background:var(--vscode-editorInfo-foreground);color:#fff}
+input,textarea{width:100%;box-sizing:border-box;margin:3px 0;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,transparent);padding:4px;font-family:inherit}
+button{background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:0;padding:4px 8px;margin:2px 2px 2px 0;cursor:pointer}
+button.secondary{background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground)}
+button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:1px solid var(--vscode-focusBorder)}
+.file{border:1px solid var(--vscode-panel-border);padding:6px;margin:6px 0}.path{word-break:break-all;font-family:var(--vscode-editor-font-family)}
+.add{color:var(--vscode-gitDecoration-addedResourceForeground)}.del{color:var(--vscode-gitDecoration-deletedResourceForeground)}
+ol{padding-left:18px;margin:0}li{margin:2px 0;font-size:.9em}.muted{opacity:.7;font-size:.9em}.err{color:var(--vscode-errorForeground)}
+pre{white-space:pre-wrap;max-height:160px;overflow:auto;background:var(--vscode-textCodeBlock-background);padding:4px}

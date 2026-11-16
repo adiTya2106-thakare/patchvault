@@ -1,0 +1,68 @@
+{
+  "name": "patchvault",
+  "displayName": "PATCHVAULT",
+  "description": "Recovery Flight Recorder for autonomous AI code changes",
+  "version": "0.1.0",
+  "publisher": "patchvault",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=20"
+  },
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "test": "npm run compile && node --test \"out/test/*.test.js\"",
+    "vscode:prepublish": "npm run compile",
+    "compile:core": "tsc -p ./tsconfig.core.json",
+    "test:core": "npm run compile:core && node --test \"out/test/*.test.js\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.0"
+  },
+  "activationEvents": [
+    "onView:patchvault.sidebar"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "PATCHVAULT runs your configured test command and writes files."
+    },
+    "virtualWorkspaces": false
+  },
+  "categories": [
+    "Other"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "patchvault",
+          "title": "PATCHVAULT",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "patchvault": [
+        {
+          "type": "webview",
+          "id": "patchvault.sidebar",
+          "name": "Flight Recorder"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "PATCHVAULT",
+      "properties": {
+        "patchvault.testCommand": {
+          "type": "string",
+          "default": "npm test",
+          "description": "Command run by 'Run tests'. Executed in the workspace root."
+        }
+      }
+    }
+  }
+}
