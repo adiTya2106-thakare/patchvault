@@ -4,9 +4,9 @@
 ---
 
 ## 1. Team (3 Members)
-- **Aditya Thakare (Team Lead)** &mdash; Indian Institute of Technology / Engineering &bull; GitHub: [`@adiTya2106-thakare`](https://github.com/adiTya2106-thakare) &bull; Email: `aditya2106.thakare@gmail.com`
-- **Team Member 2** &mdash; Indian Institute of Technology / Engineering &bull; GitHub: `@member2-handle` &bull; Role: Context Engine & Retrieval Optimization
-- **Team Member 3** &mdash; Indian Institute of Technology / Engineering &bull; GitHub: `@member3-handle` &bull; Role: VS Code Diff UI & Benchmark Evaluation
+- **Aditya Thakare (Team Lead)** &mdash; Ramdeobaba University, Nagpur &bull; GitHub: [`@adiTya2106-thakare`](https://github.com/adiTya2106-thakare) &bull; Email: `aditya2106.thakare@gmail.com`
+- **Team Member 2** &mdash; Ramdeobaba University, Nagpur &bull; GitHub: `@member2-handle` &bull; Role: Context Engine & Retrieval Optimization
+- **Team Member 3** &mdash; Ramdeobaba University, Nagpur &bull; GitHub: `@member3-handle` &bull; Role: VS Code Diff UI & Benchmark Evaluation
 
 ---
 
