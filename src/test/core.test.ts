@@ -5,8 +5,8 @@ import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { makeRepo, makeManager, w, r, tmp } from './helpers';
 import { CapsuleStorage } from '../core/capsule/capsuleStorage';
-import { setReview } from '../core/diff/diffReviewManager';
-import { recover, rejectChange } from '../core/git/recoveryManager';
+import { setReview, setHunkReview } from '../core/diff/diffReviewManager';
+import { recover, rejectChange, rejectHunk } from '../core/git/recoveryManager';
 import { record } from '../core/recorder/flightRecorder';
 import { runTests, classify } from '../core/runner/testRunner';
 import { MockAgentAdapter, TrueForgeAdapter, IntegrationNotVerifiedError } from '../core/trueforge/trueforgeAdapter';
@@ -67,6 +67,44 @@ test('approve one, reject another: reject restores the original; approval persis
   await mgr.refresh(repo, c);
   assert.equal(c.changes.find(x => x.path === 'a.txt')!.review, 'approved');   // decision survives re-scan
   assert.ok(c.events.some(e => e.type === 'change.rejected') && c.events.some(e => e.type === 'change.approved'));
+});
+
+test('hunk-level review: reject individual hunk restores partial original, keeping other hunks', async () => {
+  const repo = makeRepo(); const { mgr } = makeManager();
+  // Create a file with 15 lines so modifications are spaced > 6 lines apart
+  const lines = Array.from({ length: 15 }, (_, i) => `line ${i + 1}`).join('\n') + '\n';
+  w(repo, 'multi.txt', lines);
+  const c = await mgr.create(repo, 'hunk-test', 'edit hunks');
+
+  // Modify line 1 and line 15
+  const modifiedLines = Array.from({ length: 15 }, (_, i) => `line ${i + 1}`);
+  modifiedLines[0] = 'line 1 MODIFIED';
+  modifiedLines[14] = 'line 15 MODIFIED';
+  w(repo, 'multi.txt', modifiedLines.join('\n') + '\n');
+
+  await mgr.refresh(repo, c);
+  const ch = c.changes.find(x => x.path === 'multi.txt')!;
+  assert.ok(ch.hunks && ch.hunks.length === 2, `Expected 2 hunks, got ${ch.hunks?.length}`);
+
+  // Approve hunk 2, reject hunk 1
+  setHunkReview(c, 'multi.txt', ch.hunks[1].id, 'approved');
+  const res = rejectHunk(repo, c, mgr.storage, 'multi.txt', ch.hunks[0].id);
+  assert.ok(!res.refused && res.verified);
+
+  // Verify file on disk: line 1 restored to original, line 15 remains modified
+  const diskContent = r(repo, 'multi.txt');
+  assert.ok(diskContent.startsWith('line 1\n'), 'Line 1 should be restored to original');
+  assert.ok(diskContent.includes('line 15 MODIFIED'), 'Line 15 should remain modified');
+
+  // Verify events recorded
+  assert.ok(c.events.some(e => e.type === 'hunk.rejected' && e.meta.hunkId === 'hunk-1'));
+  assert.ok(c.events.some(e => e.type === 'hunk.approved' && e.meta.hunkId === 'hunk-2'));
+
+  // Preflight check: external edit triggers conflict refusing partial restore
+  w(repo, 'multi.txt', 'external edit tampering\n');
+  const conflictRes = rejectHunk(repo, c, mgr.storage, 'multi.txt', 'hunk-2');
+  assert.ok(conflictRes.refused);
+  assert.match(conflictRes.conflicts[0], /changed since last inspection/);
 });
 
 test('rollback detects external edits (conflict) and writes NOTHING', async () => {

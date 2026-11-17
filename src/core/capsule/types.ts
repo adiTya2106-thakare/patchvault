@@ -23,6 +23,16 @@ export interface GitCheckpoint {
   untrackedFiles: string[];
 }
 
+export interface DiffHunk {
+  id: string;
+  oldStart: number;
+  oldCount: number;
+  newStart: number;
+  newCount: number;
+  lines: string[];
+  review: ReviewStatus;
+}
+
 export interface FileChange {
   path: string;
   kind: 'modified' | 'added' | 'deleted';
@@ -31,6 +41,7 @@ export interface FileChange {
   added: number;
   removed: number;
   unifiedDiff: string;
+  hunks?: DiffHunk[];
   review: ReviewStatus;
   expected: boolean | null;        // was it in the agent's planned changes? null = no plan
 }

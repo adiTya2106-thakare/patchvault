@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { Capsule, FileChange } from '../capsule/types';
 import { CapsuleStorage } from '../capsule/capsuleStorage';
 import { listWorkspaceFiles, MAX_SNAPSHOT_BYTES } from '../git/checkpointManager';
-import { isBinary, unifiedDiff } from './unifiedDiff';
+import { isBinary, unifiedDiff, DiffResult } from './unifiedDiff';
 import { sha256 } from '../../security/hashManager';
 import { resolveInside } from '../../security/pathValidator';
 import { record } from '../recorder/flightRecorder';
@@ -15,14 +15,14 @@ function readOrNull(abs: string): Buffer | null {
   catch { return null; }
 }
 
-function makeDiff(rel: string, before: Buffer | null, after: Buffer | null) {
+function makeDiff(rel: string, before: Buffer | null, after: Buffer | null): DiffResult {
   if ((before && isBinary(before)) || (after && isBinary(after))) {
-    return { added: 0, removed: 0, text: `Binary file ${rel} differs` };
+    return { added: 0, removed: 0, text: `Binary file ${rel} differs`, hunks: [] };
   }
   const a = before ? before.toString('utf8') : '';
   const b = after ? after.toString('utf8') : '';
   if ((a.split('\n').length) * (b.split('\n').length) > MAX_DIFF_CELLS) {
-    return { added: 0, removed: 0, text: `File too large to diff inline: ${rel}` };
+    return { added: 0, removed: 0, text: `File too large to diff inline: ${rel}`, hunks: [] };
   }
   return unifiedDiff(rel, a, b);
 }
@@ -47,12 +47,17 @@ export async function detectChanges(root: string, c: Capsule, storage: CapsuleSt
     const d = makeDiff(rel, before, cur);
     const old = prev.get(rel);
     const keep = old && old.modifiedSha256 === curHash;
+    const preservedHunks = d.hunks.map(h => {
+      const oldHunk = keep ? old?.hunks?.find(oh => oh.id === h.id) : undefined;
+      return oldHunk ? { ...h, review: oldHunk.review } : h;
+    });
     next.push({
       path: rel,
       kind: !orig ? 'added' : cur ? 'modified' : 'deleted',
       originalSha256: orig ? orig.sha256 : null,
       modifiedSha256: curHash,
       added: d.added, removed: d.removed, unifiedDiff: d.text,
+      hunks: preservedHunks,
       review: keep ? old.review : 'pending',
       expected: c.plannedChanges ? c.plannedChanges.includes(rel) : null,
     });
@@ -66,7 +71,26 @@ export function setReview(c: Capsule, rel: string, status: 'approved' | 'pending
   const ch = c.changes.find(x => x.path === rel);
   if (!ch) { throw new Error(`No such change: ${rel}`); }
   ch.review = status;
+  if (ch.hunks) {
+    for (const h of ch.hunks) {
+      h.review = status;
+    }
+  }
   record(c, status === 'approved' ? 'change.approved' : 'change.review-reset', { path: rel });
+}
+
+export function setHunkReview(c: Capsule, rel: string, hunkId: string, status: 'approved' | 'pending'): void {
+  const ch = c.changes.find(x => x.path === rel);
+  if (!ch) { throw new Error(`No such change: ${rel}`); }
+  const hunk = ch.hunks?.find(h => h.id === hunkId);
+  if (!hunk) { throw new Error(`No such hunk: ${hunkId} in ${rel}`); }
+  hunk.review = status;
+  if (ch.hunks && ch.hunks.every(h => h.review === 'approved')) {
+    ch.review = 'approved';
+  } else {
+    ch.review = 'pending';
+  }
+  record(c, status === 'approved' ? 'hunk.approved' : 'hunk.review-reset', { path: rel, hunkId });
 }
 
 export function readOriginal(c: Capsule, storage: CapsuleStorage, rel: string): Buffer | null {

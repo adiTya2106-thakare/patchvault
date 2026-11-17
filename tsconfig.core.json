@@ -5,10 +5,5 @@
     "src/security/**/*.ts",
     "src/test/**/*.ts"
   ],
-  "exclude": [],
-  "compilerOptions": {
-    "typeRoots": [
-      "/opt/npm-tools/node_modules/@types"
-    ]
-  }
+  "exclude": []
 }

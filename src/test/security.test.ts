@@ -15,9 +15,17 @@ test('path traversal, absolute and NUL paths are rejected', () => {
   assert.ok(resolveInside(root, 'ok/file.txt').startsWith(fs.realpathSync(root)));
 });
 
-test('symlink escaping the workspace is rejected', () => {
+test('symlink escaping the workspace is rejected', (t) => {
   const root = tmp(); const outside = tmp();
-  fs.symlinkSync(outside, path.join(root, 'link'));
+  try {
+    fs.symlinkSync(outside, path.join(root, 'link'));
+  } catch (err: any) {
+    if (err?.code === 'EPERM' || err?.code === 'EACCES') {
+      t.skip(`Symlink creation not permitted on this Windows environment without elevated privilege (${err.code})`);
+      return;
+    }
+    throw err;
+  }
   assert.throws(() => resolveInside(root, 'link/file.txt'), PathSecurityError);
   fs.writeFileSync(path.join(outside, 'f'), 'x');
   fs.symlinkSync(path.join(outside, 'f'), path.join(root, 'flink'));

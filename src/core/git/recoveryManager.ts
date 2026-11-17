@@ -6,6 +6,7 @@ import { resolveInside } from '../../security/pathValidator';
 import { sha256 } from '../../security/hashManager';
 import { record } from '../recorder/flightRecorder';
 import { readOriginal } from '../diff/diffReviewManager';
+import { reconstructFromHunks, unifiedDiff } from '../diff/unifiedDiff';
 
 export interface RecoveryOutcome { restored: string[]; conflicts: string[]; verified: boolean; refused: boolean }
 
@@ -64,4 +65,77 @@ export function rejectChange(root: string, c: Capsule, storage: CapsuleStorage, 
   const out = recover(root, c, storage, [rel]);
   if (!out.refused) { record(c, 'change.rejected', { path: rel }); }
   return out;
+}
+
+/** Rejecting an individual hunk restores that hunk's original lines while keeping the rest.
+ *  Hash-verified: verifies file hash before and after write, all-or-nothing. */
+export function rejectHunk(root: string, c: Capsule, storage: CapsuleStorage, rel: string, hunkId: string): RecoveryOutcome {
+  const ch = c.changes.find(x => x.path === rel);
+  if (!ch) {
+    return { restored: [], conflicts: [`${rel}: not in change list`], verified: false, refused: true };
+  }
+  const abs = resolveInside(root, rel);
+  if (currentHash(abs) !== ch.modifiedSha256) {
+    const conflicts = [`${rel}: changed since last inspection`];
+    record(c, 'recovery.refused', { conflicts: 1 });
+    return { restored: [], conflicts, verified: false, refused: true };
+  }
+  const origBuf = readOriginal(c, storage, rel);
+  if (!origBuf) {
+    const conflicts = [`${rel}: original content unavailable or corrupt`];
+    record(c, 'recovery.refused', { conflicts: 1 });
+    return { restored: [], conflicts, verified: false, refused: true };
+  }
+  const hunk = ch.hunks?.find(h => h.id === hunkId);
+  if (!hunk) {
+    return { restored: [], conflicts: [`${rel}: hunk ${hunkId} not found`], verified: false, refused: true };
+  }
+
+  // Mark hunk rejected
+  hunk.review = 'rejected';
+  const origStr = origBuf.toString('utf8');
+  const curStr = fs.readFileSync(abs, 'utf8');
+
+  const allRejected = ch.hunks && ch.hunks.every(h => h.review === 'rejected');
+  let newContentBuf: Buffer;
+  if (allRejected) {
+    newContentBuf = origBuf;
+  } else {
+    const reconstructed = reconstructFromHunks(origStr, curStr, ch.hunks!);
+    newContentBuf = Buffer.from(reconstructed, 'utf8');
+  }
+
+  atomicWrite(abs, newContentBuf);
+  const writtenHash = currentHash(abs);
+  const expectedHash = sha256(newContentBuf);
+  const verified = writtenHash === expectedHash;
+
+  if (!verified) {
+    return { restored: [], conflicts: [`${rel}: hash verification failed after partial restore`], verified: false, refused: true };
+  }
+
+  record(c, 'hunk.rejected', { path: rel, hunkId });
+
+  if (allRejected || writtenHash === ch.originalSha256) {
+    c.changes = c.changes.filter(x => x.path !== rel);
+    record(c, 'change.rejected', { path: rel });
+  } else {
+    ch.modifiedSha256 = writtenHash;
+    const reDiff = unifiedDiff(rel, origStr, newContentBuf.toString('utf8'));
+    ch.added = reDiff.added;
+    ch.removed = reDiff.removed;
+    ch.unifiedDiff = reDiff.text;
+    ch.hunks = reDiff.hunks;
+    ch.review = 'pending';
+  }
+
+  c.recoveries.push({
+    at: new Date().toISOString(),
+    scope: 'file',
+    restored: [`${rel}#${hunkId}`],
+    conflicts: [],
+    verified: true,
+  });
+
+  return { restored: [`${rel}#${hunkId}`], conflicts: [], verified: true, refused: false };
 }

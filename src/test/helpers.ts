@@ -5,6 +5,10 @@ import { execFileSync } from 'node:child_process';
 import { CapsuleManager } from '../core/capsule/capsuleManager';
 import { CapsuleStorage } from '../core/capsule/capsuleStorage';
 
+if (process.platform === 'win32' && !process.env.PATH?.toLowerCase().includes('git\\cmd')) {
+  process.env.PATH = `C:\\Program Files\\Git\\cmd;${process.env.PATH || ''}`;
+}
+
 export function tmp(prefix = 'pv-'): string { return fs.mkdtempSync(path.join(os.tmpdir(), prefix)); }
 
 export function makeRepo(): string {
