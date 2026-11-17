@@ -1,0 +1,107 @@
+# TrueForge Agent Definition: PATCHVAULT Autonomous Coder
+# Competition: Techfest 2026-27 TrueFoundry Forge-a-thon
+# Harness: TrueForge (github.com/truefoundry/trueforge)
+
+apiVersion: trueforge/v1alpha1
+kind: Agent
+metadata:
+  name: patchvault-coder
+  description: Autonomous repository-level software engineer with safety flight recording and safe diff review.
+spec:
+  model:
+    provider: catalog # or openai-compatible endpoint
+    name: anthropic/claude-3-5-sonnet # or google-gemini/gemini-2.5-flash / local ollama
+    temperature: 0.1
+    max_tokens: 4096
+
+  instructions: |
+    You are an expert autonomous coding agent running inside the PATCHVAULT VS Code extension.
+    Your mission is to inspect the codebase, plan multi-file changes, and propose granular edits.
+
+    Operating Guidelines:
+    1. NEVER make blind guesses. Use `search_workspace` and `read_file` to understand the codebase structure first.
+    2. In multi-file tasks (such as adding a new CLI command), identify all relevant files unprompted:
+       - Implementation file (e.g. CLI commands definition)
+       - Test coverage file (e.g. test suite)
+       - Documentation file (e.g. user-facing docs)
+    3. Make surgical edits. Propose replacement text using `propose_file_edit`.
+    4. PATCHVAULT wraps all your changes in pre-task checkpoints and presents them hunk-by-hunk to the user.
+    5. Always mask sensitive credentials (keys containing SECRET, PASSWORD, TOKEN, KEY) when outputting configurations.
+
+  # Context Engineering Configuration
+  context_engineering:
+    compaction: true
+    deferred_tool_loading: true
+    budget:
+      max_chars: 16384 # Enforced ~4000 tokens context window budget
+      truncation_strategy: relevance_ranked
+
+  # Exposed VS Code Editor Tools
+  tools:
+    - name: read_file
+      description: Read contents of a file within the workspace. Supports line range slices.
+      parameters:
+        type: object
+        properties:
+          path:
+            type: string
+            description: Relative path from workspace root
+          start_line:
+            type: number
+            description: Optional 1-based start line
+          end_line:
+            type: number
+            description: Optional 1-based end line
+        required: [path]
+
+    - name: search_workspace
+      description: Search files across workspace using keyword or regex pattern.
+      parameters:
+        type: object
+        properties:
+          query:
+            type: string
+            description: Search term or regex pattern
+          is_regex:
+            type: boolean
+            description: Whether query is regex
+          file_pattern:
+            type: string
+            description: Optional substring or extension filter (e.g. .py, cli)
+        required: [query]
+
+    - name: propose_file_edit
+      description: Propose replacement content for a file for hunk-level developer review before writing to disk.
+      parameters:
+        type: object
+        properties:
+          path:
+            type: string
+            description: Relative path of target file
+          content:
+            type: string
+            description: Full proposed content
+          explanation:
+            type: string
+            description: Explanation of changes made
+        required: [path, content]
+
+    - name: run_terminal_command
+      description: Run a verification command in workspace root (e.g. pytest tests/test_cli.py -q).
+      parameters:
+        type: object
+        properties:
+          command:
+            type: string
+            description: Shell command to execute
+        required: [command]
+
+    - name: list_files
+      description: List files in workspace or subfolder.
+      parameters:
+        type: object
+        properties:
+          folder:
+            type: string
+            description: Relative subfolder
+        required: []

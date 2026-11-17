@@ -1,8 +1,8 @@
 {
   "name": "patchvault",
   "displayName": "PATCHVAULT",
-  "description": "Recovery Flight Recorder for autonomous AI code changes",
-  "version": "0.1.0",
+  "description": "Autonomous AI Coding Agent & Recovery Flight Recorder powered by TrueForge",
+  "version": "0.3.0",
   "publisher": "patchvault",
   "license": "MIT",
   "engines": {
@@ -33,9 +33,51 @@
     "virtualWorkspaces": false
   },
   "categories": [
+    "AI",
+    "Programming Languages",
     "Other"
   ],
   "contributes": {
+    "commands": [
+      {
+        "command": "patchvault.inlineEdit",
+        "title": "PATCHVAULT: Inline Edit with TrueForge Agent",
+        "category": "PATCHVAULT"
+      },
+      {
+        "command": "patchvault.undoLastChange",
+        "title": "PATCHVAULT: Safe Undo / Revert Last Change",
+        "category": "PATCHVAULT"
+      },
+      {
+        "command": "patchvault.cancelRun",
+        "title": "PATCHVAULT: Cancel Agent Generation",
+        "category": "PATCHVAULT"
+      },
+      {
+        "command": "patchvault.setApiKey",
+        "title": "PATCHVAULT: Set TrueForge API Key",
+        "category": "PATCHVAULT"
+      },
+      {
+        "command": "patchvault.clearApiKey",
+        "title": "PATCHVAULT: Clear TrueForge API Key",
+        "category": "PATCHVAULT"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "patchvault.inlineEdit",
+        "key": "ctrl+k",
+        "mac": "cmd+k",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "patchvault.undoLastChange",
+        "key": "ctrl+alt+z",
+        "mac": "cmd+alt+z"
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -65,12 +107,32 @@
         "patchvault.trueforgeBaseUrl": {
           "type": "string",
           "default": "http://localhost:8790",
-          "description": "URL of your TrueForge server."
+          "description": "URL of your primary TrueForge server."
         },
         "patchvault.trueforgeModel": {
           "type": "string",
           "default": "",
-          "description": "Model name configured in TrueForge Settings, e.g. anthropic/claude-sonnet-4-6."
+          "description": "Primary model name configured in TrueForge, e.g. anthropic/claude-3-5-sonnet or google-gemini/gemini-2.5-flash."
+        },
+        "patchvault.trueforgeFallbackBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:8790",
+          "description": "URL of secondary / fallback TrueForge server (Task C Resilience)."
+        },
+        "patchvault.trueforgeFallbackModel": {
+          "type": "string",
+          "default": "gemini-2.5-flash",
+          "description": "Secondary fallback model when primary is unreachable or key is invalid (Task C Resilience)."
+        },
+        "patchvault.contextBudgetTokens": {
+          "type": "number",
+          "default": 4000,
+          "description": "Maximum token budget for automatic context retrieval (~16,000 characters)."
+        },
+        "patchvault.syncRemoteEdits": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether TrueForge tool writes sync directly to workspace or queue for hunk review."
         }
       }
     }

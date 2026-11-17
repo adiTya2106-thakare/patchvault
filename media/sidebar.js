@@ -4,6 +4,8 @@
   const send = (type, extra) => vscode.postMessage(Object.assign({ type }, extra || {}));
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  let streamingBuffer = '';
+
   const stateClass = {
     'Protected': 'ok',
     'Recovery Available': 'ok',
@@ -26,8 +28,14 @@
     if (act === 'create') {
       send('createCapsule', { title: $('title').value, prompt: $('prompt').value });
     } else if (act === 'runAgent') {
-      send('runAgent');
+      streamingBuffer = '';
+      send('runAgent', { title: $('title').value, prompt: $('prompt').value });
+    } else if (act === 'inlineEdit') {
+      send('inlineEdit');
+    } else if (act === 'cancel') {
+      send('cancel');
     } else if (act === 'demo') {
+      streamingBuffer = '';
       send('runMockAgent');
     } else if (act === 'approveHunk' || act === 'rejectHunk') {
       send(act, { path: b.dataset.path, hunkId: b.dataset.hunk });
@@ -38,16 +46,38 @@
 
   window.addEventListener('message', (e) => {
     const m = e.data;
-    if (m.type === 'busy') {
-      $('status').innerHTML = '<div class="spinner"></div> <span>' + esc(m.text) + '</span>';
+
+    if (m.type === 'streamToken') {
+      streamingBuffer += m.token;
+      let streamEl = $('streamOutput');
+      if (!streamEl) {
+        $('status').innerHTML += '<div class="stream-container"><h4>Live Token Stream (TrueForge)</h4><pre id="streamOutput" class="stream-box"></pre></div>';
+        streamEl = $('streamOutput');
+      }
+      if (streamEl) {
+        streamEl.textContent = streamingBuffer.slice(-2500);
+      }
       return;
     }
+
+    if (m.type === 'busy') {
+      const cancelBtn = m.canCancel ? ' <button class="small-btn danger" data-act="cancel">Cancel Run</button>' : '';
+      let ctxBlock = '';
+      if (m.contextSummary && m.contextSummary.length > 0) {
+        ctxBlock = `<details open class="context-details"><summary><b>Context Engine Assembly (Size Budget Enforced)</b></summary><ul class="context-list">${m.contextSummary.map(r => `<li>${esc(r)}</li>`).join('')}</ul></details>`;
+      }
+      $('status').innerHTML = '<div class="spinner"></div> <span>' + esc(m.text) + '</span>' + cancelBtn + ctxBlock;
+      return;
+    }
+
     if (m.type === 'error') {
       $('status').innerHTML = '<div class="alert error">' + esc(m.text) + '</div>';
       return;
     }
+
     if (m.type !== 'state') return;
 
+    streamingBuffer = '';
     $('status').innerHTML = m.notice ? '<div class="alert info">' + esc(m.notice) + '</div>' : '';
 
     // Render Integration Info

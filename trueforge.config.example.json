@@ -1,0 +1,42 @@
+{
+  "$schema": "https://trueforge.dev/schemas/config.json",
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8790,
+    "cors": ["*"]
+  },
+  "agent": {
+    "definition": "./agent.yaml"
+  },
+  "models": {
+    "primary": {
+      "provider": "anthropic",
+      "name": "anthropic/claude-3-5-sonnet",
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "temperature": 0.1,
+      "maxTokens": 4096
+    },
+    "resilienceFallback": {
+      "provider": "google",
+      "name": "google-gemini/gemini-2.5-flash",
+      "apiKeyEnv": "GEMINI_API_KEY",
+      "temperature": 0.1,
+      "maxTokens": 4096,
+      "note": "Automatically takes over with zero user intervention if primary endpoint is unreachable or key is invalid (Task C)"
+    },
+    "localAlternative": {
+      "provider": "openai-compatible",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "name": "ollama/qwen2.5-coder:7b",
+      "note": "100% offline free local inference option"
+    }
+  },
+  "vscodeExtensionSettings": {
+    "patchvault.trueforgeBaseUrl": "http://localhost:8790",
+    "patchvault.trueforgeModel": "anthropic/claude-3-5-sonnet",
+    "patchvault.trueforgeFallbackBaseUrl": "http://localhost:8790",
+    "patchvault.trueforgeFallbackModel": "google-gemini/gemini-2.5-flash",
+    "patchvault.contextBudgetTokens": 4000,
+    "patchvault.testCommand": "pytest tests/test_cli.py -q"
+  }
+}

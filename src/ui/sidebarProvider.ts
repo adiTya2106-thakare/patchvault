@@ -11,6 +11,7 @@ import { record } from '../core/recorder/flightRecorder';
 import { MockAgentAdapter, TrueForgeAdapter } from '../core/trueforge/trueforgeAdapter';
 import { CredentialManager } from '../security/credentialManager';
 import { resolveInside } from '../security/pathValidator';
+import { ContextEngine, RetrievedFile } from '../core/context/contextEngine';
 
 type Msg = {
   type: string;
@@ -27,6 +28,8 @@ export const KNOWN_WEBVIEW_MESSAGES = new Set([
   'createCapsule',
   'runMockAgent',
   'runAgent',
+  'cancel',
+  'inlineEdit',
   'scan',
   'approve',
   'reject',
@@ -43,6 +46,7 @@ export const KNOWN_WEBVIEW_MESSAGES = new Set([
 export class SidebarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private current?: Capsule;
+  private activeAbortCtrl?: AbortController;
 
   constructor(
     private readonly ctx: vscode.ExtensionContext,
@@ -68,25 +72,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <link rel="stylesheet" href="${css}"><title>PATCHVAULT</title></head><body>
 <header>
   <h1>PATCHVAULT</h1>
-  <div class="subtitle">Recovery Flight Recorder for AI Code Changes</div>
+  <div class="subtitle">Autonomous AI Agent Harness &amp; Diff Flight Recorder</div>
 </header>
 <section aria-label="Agent Integration">
-  <h2>Agent Integration</h2>
+  <h2>TrueForge Agent Harness</h2>
   <div id="tf"></div>
 </section>
 <section aria-label="New Task">
-  <h2>New Task</h2>
-  <input id="title" placeholder="Task title (e.g. Implement user auth)" aria-label="Task title">
-  <textarea id="prompt" rows="3" placeholder="What should the agent do?" aria-label="Task prompt"></textarea>
+  <h2>Task &amp; Context Controller</h2>
+  <input id="title" placeholder="Task title (e.g. Add flask config CLI command)" aria-label="Task title">
+  <textarea id="prompt" rows="3" placeholder="Instruct agent (supports @file and @symbol, or leave unprompted for automatic retrieval)..." aria-label="Task prompt"></textarea>
   <div class="button-group">
-    <button data-act="create" class="primary">Create Capsule</button>
-    <button data-act="runAgent" class="primary">Run TrueForge Agent</button>
+    <button data-act="create" class="secondary">1. Capture Checkpoint</button>
+    <button data-act="runAgent" class="primary">2. Run Agent Mode</button>
+    <button data-act="inlineEdit" class="secondary">Inline Edit (Ctrl+K)</button>
     <button data-act="demo" class="secondary">Run MOCK Agent (Demo)</button>
   </div>
 </section>
 <div id="status" role="status" class="status-box"></div>
 <section aria-label="Current Capsule">
-  <h2>Current Capsule</h2>
+  <h2>Flight Recorder &amp; Diff Review</h2>
   <div id="cur"></div>
 </section>
 <section aria-label="Capsule History">
@@ -102,12 +107,24 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.push();
   }
 
+  cancelActiveRun(): void {
+    if (this.activeAbortCtrl) {
+      this.activeAbortCtrl.abort();
+      this.post({ type: 'busy', text: 'Cancelling TrueForge agent run mid-flight...' });
+      if (this.current) {
+        record(this.current, 'agent.cancelled', { reason: 'User invoked cancel' });
+        this.current.status = 'review';
+        this.mgr.save(this.current);
+      }
+      this.push('Run cancelled. Workspace stayed consistent with zero half-applied edits.');
+    }
+  }
+
   private post(m: unknown): void {
     void this.view?.webview.postMessage(m);
   }
 
   async handle(raw: unknown): Promise<boolean> {
-    // Untrusted input from webview: validate shape before acting.
     const m = raw as Msg;
     if (!m || typeof m.type !== 'string' || !KNOWN_WEBVIEW_MESSAGES.has(m.type)) {
       return false;
@@ -146,61 +163,126 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         return;
       }
 
+      case 'cancel': {
+        this.cancelActiveRun();
+        return;
+      }
+
+      case 'inlineEdit': {
+        await vscode.commands.executeCommand('patchvault.inlineEdit');
+        return;
+      }
+
       case 'runAgent': {
-        if (!c) { throw new Error('Create a capsule first.'); }
+        // If capsule doesn't exist, create one automatically
+        let capsule = c;
+        if (!capsule) {
+          const title = m.title?.trim() || 'Agent Mode Task';
+          const prompt = m.prompt?.trim() || 'Agent Mode execution';
+          this.current = await this.mgr.create(root, title, prompt);
+          capsule = this.current;
+        }
+
         const cfg = vscode.workspace.getConfiguration('patchvault');
         const apiKey = this.credentials ? await this.credentials.getApiKey() : undefined;
+
+        // Context Assembly with size budget
+        const contextEngine = new ContextEngine();
+        const assembled = await contextEngine.assembleContext(root, capsule.prompt, {
+          budgetChars: cfg.get<number>('contextBudgetTokens', 4000) * 4,
+        });
+
+        record(capsule, 'context.assembled', {
+          budgetChars: assembled.budgetChars,
+          totalChars: assembled.totalChars,
+          retrievedFiles: assembled.retrievedFiles.map((f: RetrievedFile) => f.path).join(','),
+        });
+
         const ad = new TrueForgeAdapter({
           baseUrl: cfg.get<string>('trueforgeBaseUrl', 'http://localhost:8790'),
           model: cfg.get<string>('trueforgeModel', ''),
           apiKey,
+          fallbackBaseUrl: cfg.get<string>('trueforgeFallbackBaseUrl', 'http://localhost:8790'),
+          fallbackModel: cfg.get<string>('trueforgeFallbackModel', 'gemini-2.5-flash'),
+          fallbackApiKey: apiKey,
           syncRemoteEdits: cfg.get<boolean>('syncRemoteEdits', false),
         });
 
-        c.agentSession = { adapter: ad.name, sessionId: null, mock: false };
-        c.status = 'running';
-        this.post({ type: 'busy', text: 'TrueForge agent running turn…' });
+        capsule.agentSession = { adapter: ad.name, sessionId: null, mock: false };
+        capsule.status = 'running';
+        this.activeAbortCtrl = new AbortController();
+
+        this.post({
+          type: 'busy',
+          text: 'TrueForge agent running turn…',
+          canCancel: true,
+          contextSummary: assembled.rationale,
+        });
 
         try {
           const res = await ad.run({
             workspaceRoot: root,
-            prompt: c.prompt,
-            onEvent: (t, meta) => record(c, t, meta),
+            prompt: capsule.prompt,
+            abortSignal: this.activeAbortCtrl.signal,
+            onToken: (tok) => this.post({ type: 'streamToken', token: tok }),
+            onEvent: (t, meta) => record(capsule!, t, meta),
           });
-          c.agentSession.sessionId = res.sessionId;
-          c.plannedChanges = res.plannedChanges;
-          record(c, 'agent.finished', { summary: res.summary });
+
+          this.activeAbortCtrl = undefined;
+          capsule.agentSession.sessionId = res.sessionId;
+          capsule.plannedChanges = res.plannedChanges;
+          record(capsule, 'agent.finished', { summary: res.summary });
+
+          if (res.fallbackUsed) {
+            record(capsule, 'resilience.fallback_used', { fallbackModel: res.fallbackModel || '' });
+          }
         } catch (e) {
-          c.status = 'failed';
-          record(c, 'agent.failed', { error: (e as Error).message.slice(0, 200) });
-          this.mgr.save(c);
+          this.activeAbortCtrl = undefined;
+          capsule.status = 'failed';
+          record(capsule, 'agent.failed', { error: (e as Error).message.slice(0, 200) });
+          this.mgr.save(capsule);
           throw e;
         }
 
-        c.status = 'review';
-        await this.mgr.refresh(root, c);
+        capsule.status = 'review';
+        await this.mgr.refresh(root, capsule);
         this.push('TrueForge turn finished. Workspace scanned against checkpoint.');
         return;
       }
 
       case 'runMockAgent': {
         if (!c) { throw new Error('Create a capsule first.'); }
+        // Task B multi-file demonstration support in mock mode
         const ad = new MockAgentAdapter([
-          { path: 'patchvault-demo/hello.txt', content: 'Written by the MOCK agent\n' },
-          { path: 'patchvault-demo/notes.txt', content: 'Also written by the MOCK agent\n' },
+          {
+            path: 'src/flask/cli.py',
+            content: '# Added flask config built-in CLI command\nimport click\nimport json\n\n@click.command("config")\n@click.pass_context\ndef config_command(ctx):\n    """Print the application configuration as JSON, masking secrets."""\n    click.echo(json.dumps({"DEBUG": True, "SECRET_KEY": "***", "TOKEN": "***"}))\n'
+          },
+          {
+            path: 'tests/test_cli.py',
+            content: '# Added test_config_command\ndef test_config_command(runner, app):\n    result = runner.invoke(args=["config"])\n    assert result.exit_code == 0\n    assert "***" in result.output\n'
+          },
+          {
+            path: 'docs/cli.rst',
+            content: 'CLI Documentation\n-----------------\nBuilt-in Commands:\n- ``flask run``\n- ``flask shell``\n- ``flask routes``\n- ``flask config``: Print configuration as JSON with masked secrets.\n'
+          }
         ], { iUnderstandThisIsAMock: true });
 
         c.agentSession = { adapter: ad.name, sessionId: null, mock: true };
+        this.activeAbortCtrl = new AbortController();
         const res = await ad.run({
           workspaceRoot: root,
           prompt: c.prompt,
+          abortSignal: this.activeAbortCtrl.signal,
+          onToken: (tok) => this.post({ type: 'streamToken', token: tok }),
           onEvent: (t, meta) => record(c, t, meta),
         });
+        this.activeAbortCtrl = undefined;
         c.agentSession.sessionId = res.sessionId;
         c.plannedChanges = res.plannedChanges;
         c.status = 'review';
         await this.mgr.refresh(root, c);
-        this.push('MOCK agent finished (simulated offline). Changes detected.');
+        this.push('MOCK multi-file agent finished (touched 3 files unprompted). Review hunks below.');
         return;
       }
 
@@ -339,6 +421,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const history = this.mgr.storage.list();
     const cfg = vscode.workspace.getConfiguration('patchvault');
     const model = cfg.get<string>('trueforgeModel', '') || 'None configured';
+    const fallbackModel = cfg.get<string>('trueforgeFallbackModel', 'gemini-2.5-flash');
     const baseUrl = cfg.get<string>('trueforgeBaseUrl', 'http://localhost:8790');
     const hasKey = this.credentials ? await this.credentials.hasApiKey() : false;
 
@@ -349,10 +432,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         name: 'TrueFoundry (TrueForge)',
         mock: false,
         model,
+        fallbackModel,
         baseUrl,
         hasApiKey: hasKey,
         note: model !== 'None configured'
-          ? `Adapter: ${model} @ ${baseUrl}`
+          ? `Primary: ${model} | Fallback: ${fallbackModel}`
           : 'Set "patchvault.trueforgeModel" in Settings or use MOCK agent for demo.',
       },
       history: history.loaded.map(h => ({
