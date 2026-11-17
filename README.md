@@ -131,6 +131,14 @@ Benchmark Repository: [`pallets/flask`](https://github.com/pallets/flask), tag `
 
 ---
 
+## Authors & Team
+
+- **Aditya Thakare (Team Lead)** &mdash; Ramdeobaba University, Nagpur
+- **Aryan Dubey** &mdash; Ramdeobaba University, Nagpur
+- **Kartik Gavhane** &mdash; Ramdeobaba University, Nagpur
+
+---
+
 ## License
 
-MIT &copy; 2026 Aditya Thakare. Built for the Techfest TrueFoundry Forge-a-thon.
+MIT &copy; 2026 Aditya Thakare, Aryan Dubey, Kartik Gavhane. Built for the Techfest TrueFoundry Forge-a-thon.
