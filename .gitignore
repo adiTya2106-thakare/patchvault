@@ -3,3 +3,6 @@ out/
 *.vsix
 .env
 .patchvault/
+
+make_pdf.py
+writeup_render.html
